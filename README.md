@@ -162,6 +162,16 @@ The main sweep above omits `--weight-decay`, so the generated run suffix uses
 `wd0`. If you explicitly run training with `--weight-decay 0.0`, the suffix uses
 `wd0.0`; use the suffix that matches your output directories.
 
+The analysis distinguishes between final-epoch and best-epoch evaluation.
+Model-wise double descent is primarily defined using final validation error,
+following standard practice. However, models of different widths may reach their
+best generalization performance at different training stages. Therefore, the
+repository reports both final-vs-final and best-vs-best comparisons.
+
+FTLE uses 0 as the edge-of-chaos threshold: positive values indicate chaotic
+behavior, while negative values indicate ordered behavior. The
+Jacobian-norm-based indicator uses 1 as the edge-of-chaos threshold.
+
 ### Model-wise Double Descent
 
 ```bash
@@ -199,11 +209,21 @@ python scripts/plot_double_descent_vs_ftle.py \
   --outdir plots/dd_vs_ftle
 ```
 
-This produces three comparisons:
+This produces two main comparisons:
 
 - final validation error vs final FTLE
-- final validation error vs best-epoch FTLE
 - best validation error vs best-epoch FTLE
+
+The first comparison follows the standard final-epoch definition of model-wise
+double descent. The second comparison evaluates both generalization and dynamics
+at the best-validation epoch, providing a stage-aligned comparison across model
+widths.
+
+An additional diagnostic plot, final validation error vs best-epoch FTLE, may
+also be generated for exploratory analysis, but it is not used as the main
+comparison in the report.
+
+For fair visual comparison, all FTLE curve plots use a shared FTLE y-axis range.
 
 ### Double Descent vs Jacobian Norm
 
@@ -222,6 +242,9 @@ This produces:
 - final validation error vs final Jacobian norm
 - final validation error vs best-epoch Jacobian norm
 - best validation error vs best-epoch Jacobian norm
+
+The Jacobian-norm plots use a shared right-axis range for fair visual
+comparison.
 
 Widths and repeat ids are auto-discovered from the output folders when possible.
 Pass `--widths` or `--repeat-ids` only when you want a specific subset.
@@ -258,5 +281,7 @@ The main experimental pipeline is:
 4. Compare generalization curves with dynamical indicators across model width.
 5. Use Jacobian norm as an additional appendix analysis.
 
-The central question is whether the double descent peak aligns with a transition
-between ordered and chaotic regimes.
+The project finds that the apparent relationship between double descent and
+dynamical behavior depends on the evaluation stage, and does not support a fixed
+one-to-one correspondence between the double descent peak and the edge-of-chaos
+transition.
