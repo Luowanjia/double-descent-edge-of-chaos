@@ -2,19 +2,20 @@
 import argparse
 import csv
 import os
+import sys
 import time
 import math
+from pathlib import Path
 
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import Model
 
+PROJECT_ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(PROJECT_ROOT / "utils"))
+
 import loggingreporter
 import models
-import plot_figure2a
-import plot_figure2b
-import plot_figure_s1_2
-import plot_figure_s7_8
 import utils
 
 
@@ -88,6 +89,10 @@ parser.add_argument('--sanity_bn_inference', action='store_true',
                     help='in sanity_overfit_batch, freeze BatchNorm layers for inference-like behavior')
 parser.add_argument('--tfdata_debug', action='store_true',
                     help='enable tf.data debug mode for cnn_dynamics skip-chaos fit path')
+parser.add_argument('--results-root', type=str, default='results_dd',
+                    help='directory used for metrics.csv outputs')
+parser.add_argument('--rawdata-root', type=str, default='rawdata',
+                    help='directory used for Lyapunov/FTLE/loss pickle outputs')
 
 
 # =========================================================
@@ -713,6 +718,8 @@ def main():
     else:
         raise ValueError('Unknown architecture: {}'.format(args.architecture))
 
+    # These tags make each output directory self-describing, so plotting scripts
+    # can recover the architecture, width, training budget, and chaos setting.
     skip_tag = 'skipchaos' if args.skip_chaos else 'withchaos'
     subset_tag = 'full' if args.train_subset == 0 else f'sub{args.train_subset}'
     budget_tag = f'steps{args.max_train_steps}' if args.max_train_steps and args.max_train_steps > 0 else f'ep{args.epochs}'
@@ -739,11 +746,13 @@ def main():
         args.repeat = num_repeat
 
         if not args.skip_chaos:
-            args.save_lyapunov0s_dir = 'rawdata/lyapunov0s'
-            args.save_lyapunov1s_dir = 'rawdata/lyapunov1s'
-            args.save_lyapunov2s_dir = 'rawdata/lyapunov2s'
-            args.save_ftle_dir = 'rawdata/ftle_benettin'
-            args.save_losses_dir = 'rawdata/losses'
+            # The reporter writes large per-repeat pickle files here. These
+            # directories are ignored by Git and can be moved with --rawdata-root.
+            args.save_lyapunov0s_dir = os.path.join(args.rawdata_root, 'lyapunov0s')
+            args.save_lyapunov1s_dir = os.path.join(args.rawdata_root, 'lyapunov1s')
+            args.save_lyapunov2s_dir = os.path.join(args.rawdata_root, 'lyapunov2s')
+            args.save_ftle_dir = os.path.join(args.rawdata_root, 'ftle_benettin')
+            args.save_losses_dir = os.path.join(args.rawdata_root, 'losses')
 
         model = getattr(models, args.architecture)(args)
 
@@ -753,7 +762,9 @@ def main():
         else:
             x_dummy = None
 
-        run_root = os.path.join('results_dd', args.architecture, args.dir)
+        # Metrics are saved once per repeat. The nested architecture component is
+        # kept for compatibility with the plotting scripts and previous outputs.
+        run_root = os.path.join(args.results_root, args.architecture, args.dir)
         repeat_dir = os.path.join(run_root, 'repeat_{}'.format(num_repeat))
         metrics_path = os.path.join(repeat_dir, 'metrics.csv')
 

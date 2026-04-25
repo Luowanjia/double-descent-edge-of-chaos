@@ -205,3 +205,13 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Experiment outputs
+rawdata/
+results_dd/
+dd_vs_*.csv
+dd_vs_*.png
+dd_vs_*.pdf
+val_loss_repeats*.csv
+val_loss_repeats*.png
+val_loss_repeats*.pdf
