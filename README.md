@@ -237,11 +237,13 @@ python scripts/plot_double_descent_vs_jacobian_norm.py \
   --outdir plots/dd_vs_jacobian_norm
 ```
 
-This produces:
+This produces two main comparisons:
 
 - final validation error vs final Jacobian norm
-- final validation error vs best-epoch Jacobian norm
 - best validation error vs best-epoch Jacobian norm
+
+An additional diagnostic plot, final validation error vs best-epoch Jacobian
+norm, may also be generated for exploratory analysis.
 
 The Jacobian-norm plots use a shared right-axis range for fair visual
 comparison.
