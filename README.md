@@ -16,10 +16,10 @@ and plotting scripts for post-processing experiment outputs.
 |-- utils/
 |   `-- loggingreporter.py          # Lyapunov, FTLE, and loss logging callback
 `-- scripts/
-    |-- plot_model_wise_dd.py       # Plot double-descent curves from metrics.csv
-    |-- plot_dd_vs_ftle.py          # Combine validation error with FTLE outputs
-    |-- plot_dd_vs_chaos.py         # Combine validation error with Lyapunov outputs
-    `-- plot_val_loss_latest.py     # Plot validation-loss summaries
+    |-- plot_modelwise_double_descent.py          # Plot double-descent curves from metrics.csv
+    |-- plot_double_descent_vs_ftle.py            # Combine validation error with FTLE outputs
+    |-- plot_double_descent_vs_jacobian_norm.py   # Combine validation error with Lyapunov outputs
+    `-- plot_validation_loss_by_width.py          # Plot validation-loss summaries
 ```
 
 Generated experiment data is intentionally ignored by Git:
@@ -101,7 +101,7 @@ than `results_dd/` and `rawdata/`.
 Plot model-wise double-descent curves from existing `metrics.csv` files:
 
 ```bash
-python scripts/plot_model_wise_dd.py \
+python scripts/plot_modelwise_double_descent.py \
   --architecture cnn_dynamics \
   --run-name-prefix sgd_mom0.0_lr0.1_lrschinverse_sqrt_decay512_bw \
   --required-substring _bs128_wd0_noise0.15_full_relu_steps50000_iter100_skipchaos
