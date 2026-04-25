@@ -36,13 +36,10 @@ Main files:
 
 ## Data
 
-The code uses public benchmark datasets from `tensorflow.keras.datasets`.
+The main experiments use CIFAR-10 from `tensorflow.keras.datasets`.
 
-- Main dataset: CIFAR-10
-- Exploratory dataset: Fashion-MNIST
-
-CIFAR-10 and Fashion-MNIST are downloaded automatically by Keras on first use.
-No manual dataset preparation is required.
+CIFAR-10 is downloaded automatically by Keras on first use. No manual dataset
+preparation is required.
 
 ## Environment Setup
 
