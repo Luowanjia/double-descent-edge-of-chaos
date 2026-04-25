@@ -280,7 +280,8 @@ The main experimental pipeline is:
 1. Train width-scaled CNN-dynamics models on CIFAR-10 with 15% label noise.
 2. Measure model-wise double descent using validation error.
 3. Measure dynamical behavior using FTLE.
-4. Compare generalization curves with dynamical indicators across model width.
+4. Compare generalization curves with dynamical indicators across model width
+   under both final-epoch and best-epoch evaluation.
 5. Use Jacobian norm as an additional appendix analysis.
 
 The project finds that the apparent relationship between double descent and
