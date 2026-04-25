@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 # =========================================================
 # Config
 # =========================================================
-RESULT_CSV = "plots_50k_cnndyn_withchaos_fixed/model_wise_summary.csv"
 RESULTS_ROOT = "results_dd"
 RAW_ROOT = "rawdata/lyapunov1s"
 
@@ -18,6 +17,11 @@ RUN_PREFIX = "sgd_mom0.0_lr0.1_lrschinverse_sqrt_decay512_bw"
 RUN_SUFFIX = "_bs128_wd0_noise0.15_full_relu_steps50000_iter100_withchaos"
 
 REPEAT_ID = 0
+
+# If None, auto-discover widths from RAW_ROOT
+WIDTHS = None
+
+# Optional cap to mimic your old plot style
 MAX_WIDTH = 24
 
 # If best epoch does not have an exact chaos file,
@@ -27,20 +31,14 @@ ALLOW_FALLBACK_TO_PREV_LOGGED_EPOCH = True
 # Output prefix
 OUT_PREFIX = "dd_vs_chaos_lyapunov1"
 
+# Shared y-axis across all JN plots
+USE_SHARED_CHAOS_YLIM = True
+CHAOS_YLIM_MARGIN_RATIO = 0.05
+
 
 # =========================================================
 # Helpers
 # =========================================================
-def load_summary_csv(path):
-    df = pd.read_csv(path)
-    df = df.sort_values("base_width").reset_index(drop=True)
-
-    if MAX_WIDTH is not None:
-        df = df[df["base_width"] <= MAX_WIDTH].reset_index(drop=True)
-
-    return df
-
-
 def get_run_name(bw):
     return f"{RUN_PREFIX}{bw}{RUN_SUFFIX}"
 
@@ -71,6 +69,30 @@ def parse_epoch_from_filename(path):
     if m is None:
         return None
     return int(m.group(1))
+
+
+def parse_bw_from_run_dirname(name):
+    m = re.search(r"_bw(\d+)_", name)
+    if m is None:
+        return None
+    return int(m.group(1))
+
+
+def auto_discover_widths():
+    root = os.path.join(RAW_ROOT, ARCH)
+    if not os.path.exists(root):
+        return []
+
+    discovered = []
+    for name in os.listdir(root):
+        bw = parse_bw_from_run_dirname(name)
+        if bw is not None:
+            discovered.append(bw)
+
+    discovered = sorted(set(discovered))
+    if MAX_WIDTH is not None:
+        discovered = [bw for bw in discovered if bw <= MAX_WIDTH]
+    return discovered
 
 
 def list_epoch_files(run_dir):
@@ -120,13 +142,7 @@ def choose_best_epoch_file(epoch_files, target_epoch, allow_fallback=True):
     return candidates[-1]
 
 
-def get_best_metrics_from_metrics_csv(metrics_csv_path):
-    """
-    Define best epoch by minimum validation error = 1 - val_acc,
-    i.e. maximum val_acc.
-
-    If there are ties, choose the earliest epoch.
-    """
+def load_metrics_csv(metrics_csv_path):
     if not os.path.exists(metrics_csv_path):
         return None
 
@@ -146,6 +162,34 @@ def get_best_metrics_from_metrics_csv(metrics_csv_path):
     df["val_loss"] = df["val_loss"].astype(float)
     df["val_error"] = 1.0 - df["val_acc"]
 
+    return df.sort_values("epoch").reset_index(drop=True)
+
+
+def get_final_metrics_from_metrics_csv(metrics_csv_path):
+    df = load_metrics_csv(metrics_csv_path)
+    if df is None or len(df) == 0:
+        return None
+
+    final_row = df.iloc[-1]
+    return {
+        "final_epoch": int(final_row["epoch"]),
+        "final_val_acc": float(final_row["val_acc"]),
+        "final_val_loss": float(final_row["val_loss"]),
+        "final_val_error": float(final_row["val_error"]),
+    }
+
+
+def get_best_metrics_from_metrics_csv(metrics_csv_path):
+    """
+    Define best epoch by minimum validation error = 1 - val_acc,
+    i.e. maximum val_acc.
+
+    If there are ties, choose the earliest epoch.
+    """
+    df = load_metrics_csv(metrics_csv_path)
+    if df is None or len(df) == 0:
+        return None
+
     best_val_error = df["val_error"].min()
     best_rows = df[df["val_error"] == best_val_error].sort_values("epoch")
     best_row = best_rows.iloc[0]
@@ -158,26 +202,56 @@ def get_best_metrics_from_metrics_csv(metrics_csv_path):
     }
 
 
-def build_width_records(summary_df):
+def compute_shared_chaos_ylim(df_records, margin_ratio=0.05):
+    """
+    Compute one shared y-axis range across all JN/chaos curve plots.
+    Uses both final_chaos and best_chaos.
+    """
+    global_min = min(df_records["final_chaos"].min(), df_records["best_chaos"].min())
+    global_max = max(df_records["final_chaos"].max(), df_records["best_chaos"].max())
+
+    if np.isclose(global_min, global_max):
+        margin = 0.1
+    else:
+        margin = margin_ratio * (global_max - global_min)
+
+    return float(global_min - margin), float(global_max + margin)
+
+
+# =========================================================
+# Build records directly from raw files
+# =========================================================
+def build_width_records(widths):
     """
     Build one record per width by combining:
-    - final DD from summary csv
-    - best DD from per-run metrics.csv
+    - final DD from metrics.csv
+    - best DD from metrics.csv
     - final chaos from last logged pkl
     - best chaos from best-epoch matched pkl
     """
     records = []
 
-    for _, row in summary_df.iterrows():
-        bw = int(row["base_width"])
-        final_dd = float(row["final_val_error_mean"])
+    print("Building JN records directly from metrics.csv + raw lyapunov1 files")
+    print(f"Using widths: {widths}")
+    print(f"Using repeat: {REPEAT_ID}")
 
+    for bw in widths:
         metrics_csv = get_metrics_csv_path(bw)
         lyp_dir = get_lyapunov1_dir(bw)
         epoch_files = list_epoch_files(lyp_dir)
 
+        print("=" * 80)
+        print(f"[info] bw={bw}")
+        print(f"       metrics_csv={metrics_csv}")
+        print(f"       lyp_dir={lyp_dir}")
+
         if len(epoch_files) == 0:
             print(f"[skip] bw={bw}: no chaos files found in {lyp_dir}")
+            continue
+
+        final_info = get_final_metrics_from_metrics_csv(metrics_csv)
+        if final_info is None:
+            print(f"[skip] bw={bw}: cannot read final metrics from {metrics_csv}")
             continue
 
         best_info = get_best_metrics_from_metrics_csv(metrics_csv)
@@ -209,7 +283,7 @@ def build_width_records(summary_df):
 
         print(
             f"[ok] bw={bw}: "
-            f"final_dd={final_dd:.6f}, "
+            f"final_dd={final_info['final_val_error']:.6f}, "
             f"best_dd={best_info['best_val_error']:.6f}, "
             f"best_epoch={best_epoch}, "
             f"final_chaos={final_chaos:.6f} (logged_epoch={final_logged_epoch}), "
@@ -219,7 +293,10 @@ def build_width_records(summary_df):
         records.append({
             "base_width": bw,
 
-            "final_dd": final_dd,
+            "final_dd": final_info["final_val_error"],
+            "final_val_acc": final_info["final_val_acc"],
+            "final_val_loss": final_info["final_val_loss"],
+            "final_epoch": final_info["final_epoch"],
 
             "best_dd": best_info["best_val_error"],
             "best_val_acc": best_info["best_val_acc"],
@@ -243,7 +320,8 @@ def save_combo_outputs(
     combo_name,
     dd_label,
     chaos_label,
-    title
+    title,
+    shared_chaos_ylim=None
 ):
     out_csv = f"{OUT_PREFIX}_{combo_name}.csv"
     out_png = f"{OUT_PREFIX}_{combo_name}.png"
@@ -253,6 +331,7 @@ def save_combo_outputs(
         "base_width",
         dd_col,
         chaos_col,
+        "final_epoch",
         "best_epoch",
         "best_val_acc",
         "best_val_loss",
@@ -293,6 +372,9 @@ def save_combo_outputs(
     ax2.set_ylabel("Normalized Jacobian norm", color="orange")
     ax2.tick_params(axis="y", labelcolor="orange")
 
+    if shared_chaos_ylim is not None:
+        ax2.set_ylim(shared_chaos_ylim[0], shared_chaos_ylim[1])
+
     # Edge of chaos threshold
     ax2.axhline(
         y=1.0,
@@ -321,18 +403,37 @@ def save_combo_outputs(
 # Main
 # =========================================================
 def main():
-    summary_df = load_summary_csv(RESULT_CSV)
+    widths = WIDTHS
+    if widths is None:
+        widths = auto_discover_widths()
 
-    if "base_width" not in summary_df.columns:
-        raise ValueError("RESULT_CSV must contain column: base_width")
+    if len(widths) == 0:
+        raise RuntimeError(
+            f"No widths found under {os.path.join(RAW_ROOT, ARCH)}. "
+            "Please check whether old lyapunov1 files still exist."
+        )
 
-    if "final_val_error_mean" not in summary_df.columns:
-        raise ValueError("RESULT_CSV must contain column: final_val_error_mean")
-
-    df_records = build_width_records(summary_df)
+    df_records = build_width_records(widths)
 
     if len(df_records) == 0:
         raise RuntimeError("No valid width records were built. Please check paths and files.")
+
+    df_records = df_records.sort_values("base_width").reset_index(drop=True)
+
+    print("\nFinal widths included in JN plots:")
+    print(df_records["base_width"].tolist())
+
+    master_csv = f"{OUT_PREFIX}_all_records.csv"
+    df_records.to_csv(master_csv, index=False)
+    print(f"Saved master merged CSV to: {master_csv}")
+
+    shared_chaos_ylim = None
+    if USE_SHARED_CHAOS_YLIM:
+        shared_chaos_ylim = compute_shared_chaos_ylim(
+            df_records,
+            margin_ratio=CHAOS_YLIM_MARGIN_RATIO
+        )
+        print(f"\nUsing shared JN/chaos y-limits across all curve plots: {shared_chaos_ylim}")
 
     # 1) final DD + final lyp
     save_combo_outputs(
@@ -342,7 +443,8 @@ def main():
         combo_name="final_dd_final_chaos",
         dd_label="Final validation error",
         chaos_label="Normalized Jacobian norm (final logged epoch)",
-        title="Final DD vs Final Chaos Metric"
+        title="Final DD vs Final Chaos Metric",
+        shared_chaos_ylim=shared_chaos_ylim
     )
 
     # 2) final DD + best lyp
@@ -353,7 +455,8 @@ def main():
         combo_name="final_dd_best_chaos",
         dd_label="Final validation error",
         chaos_label="Normalized Jacobian norm (best-epoch matched)",
-        title="Final DD vs Best-Epoch Chaos Metric"
+        title="Final DD vs Best-Epoch Chaos Metric",
+        shared_chaos_ylim=shared_chaos_ylim
     )
 
     # 3) best DD + best lyp
@@ -364,7 +467,8 @@ def main():
         combo_name="best_dd_best_chaos",
         dd_label="Best validation error",
         chaos_label="Normalized Jacobian norm (best-epoch matched)",
-        title="Best DD vs Best-Epoch Chaos Metric"
+        title="Best DD vs Best-Epoch Chaos Metric",
+        shared_chaos_ylim=shared_chaos_ylim
     )
 
 
