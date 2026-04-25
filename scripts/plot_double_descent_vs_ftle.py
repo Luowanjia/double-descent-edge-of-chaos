@@ -18,10 +18,10 @@ RUN_PREFIX = None
 RUN_SUFFIX = None
 
 # Dense FTLE sweep widths
-WIDTHS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 24, 32]
+WIDTHS = None
 
 # repeats to aggregate
-REPEAT_IDS = [0, 1, 2]
+REPEAT_IDS = None
 
 ALLOW_FALLBACK_TO_PREV_LOGGED_EPOCH = True
 OUT_PREFIX = "dd_vs_ftle_benettin_repeats"
@@ -32,6 +32,8 @@ OUTDIR = "."
 # Helpers
 # =========================================================
 def parse_int_list(value):
+    if value is None:
+        return None
     if isinstance(value, list):
         return value
     items = [item.strip() for item in value.split(",") if item.strip()]
@@ -59,9 +61,9 @@ def parse_args():
     parser.add_argument("--run-suffix", required=True,
                         help="run directory suffix after the base width")
     parser.add_argument("--widths", type=parse_int_list, default=WIDTHS,
-                        help="comma-separated base widths, e.g. 2,4,8,16")
+                        help="comma-separated base widths; omit to auto-discover")
     parser.add_argument("--repeat-ids", type=parse_int_list, default=REPEAT_IDS,
-                        help="comma-separated repeat ids, e.g. 0,1,2")
+                        help="comma-separated repeat ids; omit to auto-discover")
     parser.add_argument("--out-prefix", default=OUT_PREFIX,
                         help="prefix for generated CSV/PNG/PDF files")
     parser.add_argument("--outdir", default=OUTDIR,
@@ -81,12 +83,13 @@ def configure_from_args(args):
     ARCH = args.architecture
     RUN_PREFIX = args.run_prefix
     RUN_SUFFIX = args.run_suffix
-    WIDTHS = args.widths
-    REPEAT_IDS = args.repeat_ids
     ALLOW_FALLBACK_TO_PREV_LOGGED_EPOCH = not args.no_fallback_to_prev_epoch
     OUT_PREFIX = args.out_prefix
     OUTDIR = args.outdir
     os.makedirs(OUTDIR, exist_ok=True)
+
+    WIDTHS = args.widths if args.widths is not None else auto_discover_widths()
+    REPEAT_IDS = args.repeat_ids if args.repeat_ids is not None else auto_discover_repeat_ids(WIDTHS)
 
 
 def get_run_name(bw):
@@ -111,6 +114,37 @@ def get_metrics_csv_path(bw, repeat_id):
         f"repeat_{repeat_id}",
         "metrics.csv"
     )
+
+
+def parse_bw_from_run_dirname(name):
+    if not name.startswith(RUN_PREFIX) or not name.endswith(RUN_SUFFIX):
+        return None
+    middle = name[len(RUN_PREFIX):len(name) - len(RUN_SUFFIX)]
+    return int(middle) if re.fullmatch(r"\d+", middle) else None
+
+
+def auto_discover_widths():
+    root = os.path.join(RAW_ROOT, ARCH)
+    if not os.path.exists(root):
+        return []
+
+    widths = []
+    for name in os.listdir(root):
+        bw = parse_bw_from_run_dirname(name)
+        if bw is not None:
+            widths.append(bw)
+    return sorted(set(widths))
+
+
+def auto_discover_repeat_ids(widths):
+    repeat_ids = []
+    for bw in widths:
+        run_dir = os.path.join(RAW_ROOT, ARCH, get_run_name(bw))
+        for name in os.listdir(run_dir) if os.path.exists(run_dir) else []:
+            match = re.fullmatch(r"repeat_(\d+)", name)
+            if match is not None:
+                repeat_ids.append(int(match.group(1)))
+    return sorted(set(repeat_ids))
 
 
 def parse_epoch_from_filename(path):

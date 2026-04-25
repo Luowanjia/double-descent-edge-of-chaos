@@ -123,8 +123,6 @@ python scripts/plot_validation_loss_by_width.py \
   --architecture cnn_dynamics \
   --run-prefix sgd_mom0.0_lr0.1_lrschinverse_sqrt_decay512_bw \
   --run-suffix _bs128_wd0_noise0.15_full_relu_steps50000_iter100_withchaos \
-  --widths 2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,20,24,32 \
-  --repeat-ids 0,1,2 \
   --outdir plots
 ```
 
@@ -135,8 +133,6 @@ python scripts/plot_double_descent_vs_ftle.py \
   --architecture cnn_dynamics \
   --run-prefix sgd_mom0.0_lr0.1_lrschinverse_sqrt_decay512_bw \
   --run-suffix _bs128_wd0_noise0.15_full_relu_steps50000_iter100_withchaos \
-  --widths 2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,20,24,32 \
-  --repeat-ids 0,1,2 \
   --outdir plots
 ```
 
@@ -151,6 +147,10 @@ python scripts/plot_double_descent_vs_jacobian_norm.py \
   --max-width 24 \
   --outdir plots
 ```
+
+For these scripts, widths and repeat ids are auto-discovered from the output
+folders when possible. Pass `--widths` or `--repeat-ids` only when you want a
+specific subset.
 
 ## Code reading guide
 
