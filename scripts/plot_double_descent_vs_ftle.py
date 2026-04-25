@@ -2,19 +2,20 @@ import os
 import re
 import glob
 import pickle
+import argparse
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
 # =========================================================
-# Config
+# Default config. Override from the command line; do not edit these for routine use.
 # =========================================================
 RESULTS_ROOT = "results_dd"
 RAW_ROOT = "rawdata/ftle_benettin"
 
 ARCH = "cnn_dynamics"
-RUN_PREFIX = "sgd_mom0.0_lr0.1_lrschinverse_sqrt_decay512_bw"
-RUN_SUFFIX = "_bs128_wd0_noise0.15_full_relu_steps50000_iter100_withchaos"
+RUN_PREFIX = None
+RUN_SUFFIX = None
 
 # Dense FTLE sweep widths
 WIDTHS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 24, 32]
@@ -24,11 +25,70 @@ REPEAT_IDS = [0, 1, 2]
 
 ALLOW_FALLBACK_TO_PREV_LOGGED_EPOCH = True
 OUT_PREFIX = "dd_vs_ftle_benettin_repeats"
+OUTDIR = "."
 
 
 # =========================================================
 # Helpers
 # =========================================================
+def parse_int_list(value):
+    if isinstance(value, list):
+        return value
+    items = [item.strip() for item in value.split(",") if item.strip()]
+    if len(items) == 0:
+        raise argparse.ArgumentTypeError("expected a comma-separated integer list")
+    return [int(item) for item in items]
+
+
+def make_output_path(filename):
+    return os.path.join(OUTDIR, filename)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Plot double-descent metrics against FTLE outputs."
+    )
+    parser.add_argument("--results-root", default=RESULTS_ROOT,
+                        help="root directory containing metrics.csv outputs")
+    parser.add_argument("--raw-root", default=RAW_ROOT,
+                        help="root directory containing FTLE pickle outputs")
+    parser.add_argument("--architecture", default=ARCH,
+                        help="architecture directory name, e.g. cnn_dynamics")
+    parser.add_argument("--run-prefix", required=True,
+                        help="run directory prefix before the base width")
+    parser.add_argument("--run-suffix", required=True,
+                        help="run directory suffix after the base width")
+    parser.add_argument("--widths", type=parse_int_list, default=WIDTHS,
+                        help="comma-separated base widths, e.g. 2,4,8,16")
+    parser.add_argument("--repeat-ids", type=parse_int_list, default=REPEAT_IDS,
+                        help="comma-separated repeat ids, e.g. 0,1,2")
+    parser.add_argument("--out-prefix", default=OUT_PREFIX,
+                        help="prefix for generated CSV/PNG/PDF files")
+    parser.add_argument("--outdir", default=OUTDIR,
+                        help="directory for generated CSV/PNG/PDF files")
+    parser.add_argument("--no-fallback-to-prev-epoch", action="store_true",
+                        help="require exact best-epoch FTLE files")
+    return parser.parse_args()
+
+
+def configure_from_args(args):
+    global RESULTS_ROOT, RAW_ROOT, ARCH, RUN_PREFIX, RUN_SUFFIX
+    global WIDTHS, REPEAT_IDS, ALLOW_FALLBACK_TO_PREV_LOGGED_EPOCH
+    global OUT_PREFIX, OUTDIR
+
+    RESULTS_ROOT = args.results_root
+    RAW_ROOT = args.raw_root
+    ARCH = args.architecture
+    RUN_PREFIX = args.run_prefix
+    RUN_SUFFIX = args.run_suffix
+    WIDTHS = args.widths
+    REPEAT_IDS = args.repeat_ids
+    ALLOW_FALLBACK_TO_PREV_LOGGED_EPOCH = not args.no_fallback_to_prev_epoch
+    OUT_PREFIX = args.out_prefix
+    OUTDIR = args.outdir
+    os.makedirs(OUTDIR, exist_ok=True)
+
+
 def get_run_name(bw):
     return f"{RUN_PREFIX}{bw}{RUN_SUFFIX}"
 
@@ -297,9 +357,9 @@ def save_curve_outputs(
     ftle_label,
     title
 ):
-    out_csv = f"{OUT_PREFIX}_{combo_name}.csv"
-    out_png = f"{OUT_PREFIX}_{combo_name}.png"
-    out_pdf = f"{OUT_PREFIX}_{combo_name}.pdf"
+    out_csv = make_output_path(f"{OUT_PREFIX}_{combo_name}.csv")
+    out_png = make_output_path(f"{OUT_PREFIX}_{combo_name}.png")
+    out_pdf = make_output_path(f"{OUT_PREFIX}_{combo_name}.pdf")
 
     out_df = df_agg[[
         "base_width",
@@ -356,11 +416,13 @@ def save_curve_outputs(
 
 
 def main():
+    configure_from_args(parse_args())
+
     df_repeat = build_repeat_level_records()
     if len(df_repeat) == 0:
         raise RuntimeError("No valid repeat-level records were built. Please check paths and files.")
 
-    repeat_csv = f"{OUT_PREFIX}_repeat_level_records.csv"
+    repeat_csv = make_output_path(f"{OUT_PREFIX}_repeat_level_records.csv")
     df_repeat.to_csv(repeat_csv, index=False)
     print(f"Saved repeat-level CSV to: {repeat_csv}")
 
@@ -368,7 +430,7 @@ def main():
     if len(df_agg) == 0:
         raise RuntimeError("Aggregation by width failed.")
 
-    agg_csv = f"{OUT_PREFIX}_aggregated_by_width.csv"
+    agg_csv = make_output_path(f"{OUT_PREFIX}_aggregated_by_width.csv")
     df_agg.to_csv(agg_csv, index=False)
     print(f"Saved aggregated-by-width CSV to: {agg_csv}")
 

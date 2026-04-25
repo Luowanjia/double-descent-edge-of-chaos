@@ -2,19 +2,20 @@ import os
 import re
 import glob
 import pickle
+import argparse
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
 # =========================================================
-# Config
+# Default config. Override from the command line; do not edit these for routine use.
 # =========================================================
 RESULTS_ROOT = "results_dd"
 RAW_ROOT = "rawdata/lyapunov1s"
 
 ARCH = "cnn_dynamics"
-RUN_PREFIX = "sgd_mom0.0_lr0.1_lrschinverse_sqrt_decay512_bw"
-RUN_SUFFIX = "_bs128_wd0_noise0.15_full_relu_steps50000_iter100_withchaos"
+RUN_PREFIX = None
+RUN_SUFFIX = None
 
 REPEAT_ID = 0
 
@@ -30,6 +31,7 @@ ALLOW_FALLBACK_TO_PREV_LOGGED_EPOCH = True
 
 # Output prefix
 OUT_PREFIX = "dd_vs_chaos_lyapunov1"
+OUTDIR = "."
 
 # Shared y-axis across all JN plots
 USE_SHARED_CHAOS_YLIM = True
@@ -39,6 +41,76 @@ CHAOS_YLIM_MARGIN_RATIO = 0.05
 # =========================================================
 # Helpers
 # =========================================================
+def parse_int_list(value):
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return value
+    items = [item.strip() for item in value.split(",") if item.strip()]
+    if len(items) == 0:
+        raise argparse.ArgumentTypeError("expected a comma-separated integer list")
+    return [int(item) for item in items]
+
+
+def make_output_path(filename):
+    return os.path.join(OUTDIR, filename)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Plot double-descent metrics against Jacobian-norm/Lyapunov outputs."
+    )
+    parser.add_argument("--results-root", default=RESULTS_ROOT,
+                        help="root directory containing metrics.csv outputs")
+    parser.add_argument("--raw-root", default=RAW_ROOT,
+                        help="root directory containing Lyapunov/Jacobian-norm pickle outputs")
+    parser.add_argument("--architecture", default=ARCH,
+                        help="architecture directory name, e.g. cnn_dynamics")
+    parser.add_argument("--run-prefix", required=True,
+                        help="run directory prefix before the base width")
+    parser.add_argument("--run-suffix", required=True,
+                        help="run directory suffix after the base width")
+    parser.add_argument("--repeat-id", type=int, default=REPEAT_ID,
+                        help="repeat id to plot")
+    parser.add_argument("--widths", type=parse_int_list, default=WIDTHS,
+                        help="comma-separated base widths; omit to auto-discover from raw-root")
+    parser.add_argument("--max-width", type=int, default=MAX_WIDTH,
+                        help="maximum auto-discovered width; use -1 for no cap")
+    parser.add_argument("--out-prefix", default=OUT_PREFIX,
+                        help="prefix for generated CSV/PNG/PDF files")
+    parser.add_argument("--outdir", default=OUTDIR,
+                        help="directory for generated CSV/PNG/PDF files")
+    parser.add_argument("--no-fallback-to-prev-epoch", action="store_true",
+                        help="require exact best-epoch chaos files")
+    parser.add_argument("--no-shared-chaos-ylim", action="store_true",
+                        help="use independent y-limits for each chaos axis")
+    parser.add_argument("--chaos-ylim-margin-ratio", type=float,
+                        default=CHAOS_YLIM_MARGIN_RATIO,
+                        help="margin ratio for shared chaos y-axis limits")
+    return parser.parse_args()
+
+
+def configure_from_args(args):
+    global RESULTS_ROOT, RAW_ROOT, ARCH, RUN_PREFIX, RUN_SUFFIX
+    global REPEAT_ID, WIDTHS, MAX_WIDTH, ALLOW_FALLBACK_TO_PREV_LOGGED_EPOCH
+    global OUT_PREFIX, OUTDIR, USE_SHARED_CHAOS_YLIM, CHAOS_YLIM_MARGIN_RATIO
+
+    RESULTS_ROOT = args.results_root
+    RAW_ROOT = args.raw_root
+    ARCH = args.architecture
+    RUN_PREFIX = args.run_prefix
+    RUN_SUFFIX = args.run_suffix
+    REPEAT_ID = args.repeat_id
+    WIDTHS = args.widths
+    MAX_WIDTH = None if args.max_width < 0 else args.max_width
+    ALLOW_FALLBACK_TO_PREV_LOGGED_EPOCH = not args.no_fallback_to_prev_epoch
+    OUT_PREFIX = args.out_prefix
+    OUTDIR = args.outdir
+    USE_SHARED_CHAOS_YLIM = not args.no_shared_chaos_ylim
+    CHAOS_YLIM_MARGIN_RATIO = args.chaos_ylim_margin_ratio
+    os.makedirs(OUTDIR, exist_ok=True)
+
+
 def get_run_name(bw):
     return f"{RUN_PREFIX}{bw}{RUN_SUFFIX}"
 
@@ -323,9 +395,9 @@ def save_combo_outputs(
     title,
     shared_chaos_ylim=None
 ):
-    out_csv = f"{OUT_PREFIX}_{combo_name}.csv"
-    out_png = f"{OUT_PREFIX}_{combo_name}.png"
-    out_pdf = f"{OUT_PREFIX}_{combo_name}.pdf"
+    out_csv = make_output_path(f"{OUT_PREFIX}_{combo_name}.csv")
+    out_png = make_output_path(f"{OUT_PREFIX}_{combo_name}.png")
+    out_pdf = make_output_path(f"{OUT_PREFIX}_{combo_name}.pdf")
 
     out_df = df_records[[
         "base_width",
@@ -403,6 +475,8 @@ def save_combo_outputs(
 # Main
 # =========================================================
 def main():
+    configure_from_args(parse_args())
+
     widths = WIDTHS
     if widths is None:
         widths = auto_discover_widths()
@@ -423,7 +497,7 @@ def main():
     print("\nFinal widths included in JN plots:")
     print(df_records["base_width"].tolist())
 
-    master_csv = f"{OUT_PREFIX}_all_records.csv"
+    master_csv = make_output_path(f"{OUT_PREFIX}_all_records.csv")
     df_records.to_csv(master_csv, index=False)
     print(f"Saved master merged CSV to: {master_csv}")
 

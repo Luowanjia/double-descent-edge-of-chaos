@@ -113,9 +113,44 @@ python scripts/plot_modelwise_double_descent.py \
   --double-arch-subdir
 ```
 
-The other plotting scripts contain configuration constants near the top of each
-file. Update `RESULTS_ROOT`, `RAW_ROOT`, `WIDTHS`, and `REPEAT_IDS` to match the
-experiment outputs before running them.
+The remaining plotting scripts are also configurable from the command line, so
+new users should not need to edit paths inside the source files.
+
+Validation-loss summary by width:
+
+```bash
+python scripts/plot_validation_loss_by_width.py \
+  --architecture cnn_dynamics \
+  --run-prefix sgd_mom0.0_lr0.1_lrschinverse_sqrt_decay512_bw \
+  --run-suffix _bs128_wd0_noise0.15_full_relu_steps50000_iter100_withchaos \
+  --widths 2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,20,24,32 \
+  --repeat-ids 0,1,2 \
+  --outdir plots
+```
+
+Double descent vs FTLE:
+
+```bash
+python scripts/plot_double_descent_vs_ftle.py \
+  --architecture cnn_dynamics \
+  --run-prefix sgd_mom0.0_lr0.1_lrschinverse_sqrt_decay512_bw \
+  --run-suffix _bs128_wd0_noise0.15_full_relu_steps50000_iter100_withchaos \
+  --widths 2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,20,24,32 \
+  --repeat-ids 0,1,2 \
+  --outdir plots
+```
+
+Double descent vs Jacobian norm:
+
+```bash
+python scripts/plot_double_descent_vs_jacobian_norm.py \
+  --architecture cnn_dynamics \
+  --run-prefix sgd_mom0.0_lr0.1_lrschinverse_sqrt_decay512_bw \
+  --run-suffix _bs128_wd0_noise0.15_full_relu_steps50000_iter100_withchaos \
+  --repeat-id 0 \
+  --max-width 24 \
+  --outdir plots
+```
 
 ## Code reading guide
 
