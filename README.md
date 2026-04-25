@@ -1,142 +1,214 @@
-# Double Descent and Edge of Chaos
+# Double Descent and Edge-of-Chaos Dynamics
 
-AIS5281 final project code for studying the relationship between double descent
-and edge-of-chaos metrics in neural networks.
+This repository contains the code for the AIS5281 final project:
 
-The repository contains training code, model definitions, Lyapunov/FTLE logging,
-and plotting scripts for post-processing experiment outputs.
+**Double Descent and Edge-of-Chaos Dynamics in Deep Neural Networks**
 
-## Repository layout
+The project studies whether model-wise double descent is associated with changes
+in dynamical regimes, measured with finite-time Lyapunov exponents (FTLE) and
+Jacobian-norm-based indicators.
+
+## Repository Layout
 
 ```text
 .
-|-- main.py                         # Main training and chaos-metric entry point
-|-- models.py                       # MLP/CNN/CNN-dynamics model definitions
-|-- utils.py                        # Dataset loading and augmentation helpers
+|-- main.py
+|-- models.py
+|-- utils.py
 |-- utils/
-|   `-- loggingreporter.py          # Lyapunov, FTLE, and loss logging callback
-`-- scripts/
-    |-- plot_modelwise_double_descent.py          # Plot double-descent curves from metrics.csv
-    |-- plot_double_descent_vs_ftle.py            # Combine validation error with FTLE outputs
-    |-- plot_double_descent_vs_jacobian_norm.py   # Combine validation error with Lyapunov outputs
-    `-- plot_validation_loss_by_width.py          # Plot validation-loss summaries
+|   `-- loggingreporter.py
+|-- scripts/
+|   |-- plot_modelwise_double_descent.py
+|   |-- plot_validation_loss_by_width.py
+|   |-- plot_double_descent_vs_ftle.py
+|   `-- plot_double_descent_vs_jacobian_norm.py
+|-- requirements.txt
+`-- README.md
 ```
 
-Generated experiment data is intentionally ignored by Git:
+Main files:
 
-- `results_dd/`: CSV metrics and summary plots
-- `rawdata/`: Lyapunov, FTLE, and loss pickle outputs
+- `main.py`: main training entry point, argument parsing, output directory naming, and experiment control.
+- `models.py`: standard CNN and CNN-dynamics architecture definitions.
+- `utils.py`: dataset loading and preprocessing utilities.
+- `utils/loggingreporter.py`: loss logging plus FTLE and Lyapunov/Jacobian-norm computations.
+- `scripts/`: plotting and post-processing scripts used for report figures.
 
-These folders are created automatically when the training code writes outputs.
-Existing folders can be reused; new runs are placed in run-specific subfolders
-based on architecture, optimizer, width, training budget, noise level, and repeat
-index.
+## Data
 
-## Setup
+The code uses public benchmark datasets from `tensorflow.keras.datasets`.
 
-Use Python 3.10 or 3.11. TensorFlow installation can be platform-specific, so
-choose the TensorFlow package that matches your machine.
+- Main dataset: CIFAR-10
+- Exploratory dataset: Fashion-MNIST
+
+CIFAR-10 and Fashion-MNIST are downloaded automatically by Keras on first use.
+No manual dataset preparation is required.
+
+## Environment Setup
+
+Python 3.10 or 3.11 is recommended.
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate  # Windows PowerShell: .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-## Quick smoke run
+## Output Directories
 
-This runs a short CNN-dynamics experiment without chaos logging. It writes
-`metrics.csv` under `results_dd/`.
+Generated experiment data is intentionally ignored by Git:
+
+- `results_dd/`: training metrics and plotting summaries
+- `rawdata/`: FTLE, Lyapunov/Jacobian-norm, and loss pickle files
+- `plots/`: recommended location for generated figures
+
+These folders are created automatically when the code writes outputs. Existing
+folders can be reused; new runs are placed in run-specific subfolders based on
+architecture, optimizer, width, training budget, noise level, and repeat index.
+
+Use `--results-root` and `--rawdata-root` if you want training outputs somewhere
+other than `results_dd/` and `rawdata/`.
+
+## Main CNN-Dynamics Sweep with FTLE Logging
+
+This is the main dense width sweep used for the CNN-dynamics experiments. Run it
+from the repository root.
+
+```bash
+nohup bash -c '
+for bw in 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 18 20 24 32; do
+  echo "=============================="
+  echo "Starting bw=${bw} at $(date)"
+  python -u main.py \
+    --architecture cnn_dynamics \
+    --optimizer sgd \
+    --lr 0.1 \
+    --lr-schedule inverse_sqrt \
+    --lr-decay-steps 512 \
+    --momentum 0.0 \
+    --batch-size 128 \
+    --base-width ${bw} \
+    --max-train-steps 50000 \
+    --eval-every-steps 391 \
+    --epochs 130 \
+    --label-noise 0.15 \
+    --num-iterations 100 \
+    --num-repeats 3
+  echo "Finished bw=${bw} at $(date)"
+done
+' > sweep_50k_cnndyn_withftle_dense_r3.log 2>&1 &
+```
+
+This writes training metrics under `results_dd/` and dynamical quantities under
+`rawdata/`. The most relevant raw outputs are:
+
+- `rawdata/ftle_benettin/`
+- `rawdata/lyapunov1s/`
+- `rawdata/losses/`
+
+## Faster Training without Chaos Logging
+
+For a faster sweep that only records training and validation metrics, add
+`--skip-chaos`.
+
+```bash
+nohup bash -c '
+for bw in 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 18 20 24 32; do
+  echo "=============================="
+  echo "Starting bw=${bw} at $(date)"
+  python -u main.py \
+    --architecture cnn_dynamics \
+    --optimizer sgd \
+    --lr 0.1 \
+    --lr-schedule inverse_sqrt \
+    --lr-decay-steps 512 \
+    --momentum 0.0 \
+    --batch-size 128 \
+    --base-width ${bw} \
+    --max-train-steps 50000 \
+    --eval-every-steps 391 \
+    --epochs 130 \
+    --label-noise 0.15 \
+    --num-iterations 100 \
+    --num-repeats 3 \
+    --skip-chaos
+  echo "Finished bw=${bw} at $(date)"
+done
+' > sweep_50k_cnndyn_skipchaos_dense_r3.log 2>&1 &
+```
+
+## Quick Smoke Test
+
+Use this command only to check that the code runs.
 
 ```bash
 python main.py \
   --architecture cnn_dynamics \
-  --skip-chaos \
-  --epochs 1 \
-  --num-repeats 1 \
+  --optimizer sgd \
+  --lr 0.1 \
+  --lr-schedule inverse_sqrt \
+  --lr-decay-steps 512 \
+  --momentum 0.0 \
   --batch-size 128 \
   --base-width 2 \
-  --train-subset 512
-```
-
-## Main experiment examples
-
-Fixed-step CNN-dynamics training without chaos logging:
-
-```bash
-python main.py \
-  --architecture cnn_dynamics \
-  --skip-chaos \
-  --optimizer SGD \
-  --momentum 0.0 \
-  --lr 0.1 \
-  --lr-schedule inverse_sqrt \
-  --lr-decay-steps 512 \
-  --batch-size 128 \
-  --base-width 8 \
+  --epochs 1 \
   --label-noise 0.15 \
-  --max-train-steps 50000 \
-  --eval-every-steps 391 \
-  --num-repeats 3
+  --num-iterations 100 \
+  --num-repeats 1 \
+  --train-subset 512 \
+  --skip-chaos
 ```
-
-The same setup with FTLE/Lyapunov logging enabled:
-
-```bash
-python main.py \
-  --architecture cnn_dynamics \
-  --optimizer SGD \
-  --momentum 0.0 \
-  --lr 0.1 \
-  --lr-schedule inverse_sqrt \
-  --lr-decay-steps 512 \
-  --batch-size 128 \
-  --base-width 8 \
-  --label-noise 0.15 \
-  --max-train-steps 50000 \
-  --eval-every-steps 391 \
-  --num-repeats 3
-```
-
-Use `--results-root` and `--rawdata-root` if you want outputs somewhere other
-than `results_dd/` and `rawdata/`.
 
 ## Plotting
 
-Plot model-wise double-descent curves from existing `metrics.csv` files:
+Run plotting scripts from the repository root.
+
+The main sweep above omits `--weight-decay`, so the generated run suffix uses
+`wd0`. If you explicitly run training with `--weight-decay 0.0`, the suffix uses
+`wd0.0`; use the suffix that matches your output directories.
+
+### Model-wise Double Descent
 
 ```bash
 python scripts/plot_modelwise_double_descent.py \
   --architecture cnn_dynamics \
   --run-name-prefix sgd_mom0.0_lr0.1_lrschinverse_sqrt_decay512_bw \
-  --required-substring _bs128_wd0_noise0.15_full_relu_steps50000_iter100_skipchaos \
-  --double-arch-subdir
+  --required-substring _bs128_wd0_noise0.15_full_relu_steps50000_iter100_withchaos \
+  --double-arch-subdir \
+  --outdir plots/modelwise_dd
 ```
 
-The remaining plotting scripts are also configurable from the command line, so
-new users should not need to edit paths inside the source files.
+For a skip-chaos sweep, use:
 
-Validation-loss summary by width:
+```bash
+--required-substring _bs128_wd0_noise0.15_full_relu_steps50000_iter100_skipchaos
+```
+
+### Validation-Loss Summary by Width
 
 ```bash
 python scripts/plot_validation_loss_by_width.py \
   --architecture cnn_dynamics \
   --run-prefix sgd_mom0.0_lr0.1_lrschinverse_sqrt_decay512_bw \
   --run-suffix _bs128_wd0_noise0.15_full_relu_steps50000_iter100_withchaos \
-  --outdir plots
+  --outdir plots/validation_loss_by_width
 ```
 
-Double descent vs FTLE:
+### Double Descent vs FTLE
 
 ```bash
 python scripts/plot_double_descent_vs_ftle.py \
   --architecture cnn_dynamics \
   --run-prefix sgd_mom0.0_lr0.1_lrschinverse_sqrt_decay512_bw \
   --run-suffix _bs128_wd0_noise0.15_full_relu_steps50000_iter100_withchaos \
-  --outdir plots
+  --outdir plots/dd_vs_ftle
 ```
 
-Double descent vs Jacobian norm:
+This produces three comparisons:
+
+- final validation error vs final FTLE
+- final validation error vs best-epoch FTLE
+- best validation error vs best-epoch FTLE
+
+### Double Descent vs Jacobian Norm
 
 ```bash
 python scripts/plot_double_descent_vs_jacobian_norm.py \
@@ -145,30 +217,49 @@ python scripts/plot_double_descent_vs_jacobian_norm.py \
   --run-suffix _bs128_wd0_noise0.15_full_relu_steps50000_iter100_withchaos \
   --repeat-id 0 \
   --max-width 24 \
-  --outdir plots
+  --outdir plots/dd_vs_jacobian_norm
 ```
 
-For these scripts, widths and repeat ids are auto-discovered from the output
-folders when possible. Pass `--widths` or `--repeat-ids` only when you want a
-specific subset.
+This produces:
 
-## Code reading guide
+- final validation error vs final Jacobian norm
+- final validation error vs best-epoch Jacobian norm
+- best validation error vs best-epoch Jacobian norm
 
-Start with these files in order:
+Widths and repeat ids are auto-discovered from the output folders when possible.
+Pass `--widths` or `--repeat-ids` only when you want a specific subset.
 
-1. `main.py`: parses experiment arguments, loads data, trains models, and writes
-   metrics under `results_dd/`.
-2. `models.py`: defines the MLP, standard CNN, and `cnn_dynamics` architectures.
-3. `utils/loggingreporter.py`: computes and saves FTLE, Lyapunov/Jacobian-norm,
-   and loss traces when `--skip-chaos` is not used.
-4. `scripts/`: post-processing scripts that assume training outputs already
-   exist under `results_dd/` and, for chaos plots, `rawdata/`.
+## Notes on Directory Names
 
-## Notes for handoff
+Run directories are generated automatically from the training configuration. A
+typical run name from the main sweep is:
 
-- Run commands from the repository root.
-- Keras downloads CIFAR-10/Fashion-MNIST on first use if the datasets are not
-  already cached locally.
-- `--skip-chaos` is much faster and only writes training metrics.
-- Chaos logging writes larger pickle files under `rawdata/`; keep these out of
-  Git unless a downstream user explicitly needs a small sample.
+```text
+sgd_mom0.0_lr0.1_lrschinverse_sqrt_decay512_bw{WIDTH}_bs128_wd0_noise0.15_full_relu_steps50000_iter100_withchaos
+```
+
+The plotting scripts rely on this naming pattern. If the training command uses
+`--weight-decay 0.0`, the directory contains `wd0.0`. If weight decay is omitted,
+as in the main sweep above, the directory contains `wd0`.
+
+## Code Reading Guide
+
+A recommended order for reading the code is:
+
+1. `main.py`: training loop, argument parsing, output directory naming, and experiment control.
+2. `models.py`: standard CNN and CNN-dynamics architecture definitions.
+3. `utils/loggingreporter.py`: FTLE, Lyapunov/Jacobian-norm, and loss logging.
+4. `scripts/`: post-processing and figure generation.
+
+## Project Summary
+
+The main experimental pipeline is:
+
+1. Train width-scaled CNN-dynamics models on CIFAR-10 with 15% label noise.
+2. Measure model-wise double descent using validation error.
+3. Measure dynamical behavior using FTLE.
+4. Compare generalization curves with dynamical indicators across model width.
+5. Use Jacobian norm as an additional appendix analysis.
+
+The central question is whether the double descent peak aligns with a transition
+between ordered and chaotic regimes.
